@@ -111,4 +111,12 @@ describe('LogPage default consumption type', () => {
     })
     expect(tile('Edible')).toHaveAttribute('aria-pressed', 'false')
   })
+
+  it('shows mg as the unit when tincture is selected', () => {
+    renderLog(makeCtx({ settings: settings() })) // flower default → hits
+    expect(screen.getByText('hits')).toBeInTheDocument()
+    fireEvent.click(tile('Tincture'))
+    expect(screen.getByText('mg')).toBeInTheDocument()
+    expect(screen.queryByText('drops')).toBeNull()
+  })
 })
