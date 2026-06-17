@@ -81,4 +81,24 @@ describe('AppSettingsSchema', () => {
   it('rejects autoLockMinutes > 60', () => {
     expect(() => AppSettingsSchema.parse({ autoLockMinutes: 61 })).toThrow()
   })
+
+  it('accepts and preserves a valid defaultEntryType', () => {
+    const result = AppSettingsSchema.parse({
+      theme: 'system',
+      autoLockMinutes: 5,
+      defaultEntryType: 'vape',
+    })
+    expect(result.defaultEntryType).toBe('vape')
+  })
+
+  it('treats defaultEntryType as optional', () => {
+    const result = AppSettingsSchema.parse({ theme: 'system', autoLockMinutes: 5 })
+    expect(result.defaultEntryType).toBeUndefined()
+  })
+
+  it('rejects an out-of-enum defaultEntryType', () => {
+    expect(() =>
+      AppSettingsSchema.parse({ theme: 'system', autoLockMinutes: 5, defaultEntryType: 'bong' })
+    ).toThrow()
+  })
 })

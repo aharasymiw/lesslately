@@ -1,4 +1,5 @@
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
+import { DefaultTypeSetting } from '@/components/settings/DefaultTypeSetting'
 import { DataExport } from '@/components/settings/DataExport'
 import { useData } from '@/hooks/useData'
 import { useAuth } from '@/hooks/useAuth'
@@ -67,6 +68,14 @@ export default function SettingsPage() {
           Appearance
         </p>
         <ThemeToggle />
+      </section>
+
+      {/* Logging */}
+      <section className="rounded-xl border bg-card p-4 space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Logging
+        </p>
+        <DefaultTypeSetting />
       </section>
 
       {/* Auto-lock */}

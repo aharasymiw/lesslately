@@ -46,6 +46,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [goals, setGoals] = useState<Goal[]>([])
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [isLoading, setIsLoading] = useState(false)
+  // Becomes true once the first (and every subsequent) load finishes for the
+  // current unlock; reset to false only on lock. See DataContextValue docs.
+  const [settingsReady, setSettingsReady] = useState(false)
 
   // Load (or reload) everything from the encrypted stores.
   const loadAll = useCallback(async () => {
@@ -82,6 +85,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.error('Failed to load data:', err)
     } finally {
       setIsLoading(false)
+      // Set true (never false) here: subsequent loads on an already-unlocked
+      // session (e.g. importBackup → loadAll) must not re-gate the UI.
+      //
+      // No-flash invariant: this `setSettingsReady(true)` and the `setSettings`
+      // above must land in the SAME React commit (no `await` between them, which
+      // holds today). LogPage reveals the Type grid when settingsReady flips, so
+      // settings.defaultEntryType must already be applied in that same render —
+      // otherwise the grid would paint the stale default for one frame.
+      setSettingsReady(true)
     }
   }, [masterKey])
 
@@ -116,6 +128,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setEntries([])
       setGoals([])
       setSettings(DEFAULT_SETTINGS)
+      setSettingsReady(false)
       return
     }
     void (async () => {
@@ -225,6 +238,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         saveSettings,
         importBackup,
         isLoading,
+        settingsReady,
       }}
     >
       {children}
