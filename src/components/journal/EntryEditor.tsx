@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { TypeSelector } from '@/components/log/TypeSelector'
-import { DEFAULT_UNITS } from '@/lib/constants'
+import { DEFAULT_UNITS, AMOUNT_STEPS } from '@/lib/constants'
 import { AmountStepper } from '@/components/log/AmountStepper'
 import { SocialToggle } from '@/components/log/SocialToggle'
 import { TimePicker } from '@/components/log/TimePicker'
@@ -65,7 +65,12 @@ export function EntryEditor({ entry, onSave, onClose }: EntryEditorProps) {
 
         <div className="flex flex-col gap-4 py-2">
           <TypeSelector value={type} onChange={setType} />
-          <AmountStepper value={amount} unit={DEFAULT_UNITS[type]} onChange={setAmount} />
+          <AmountStepper
+            value={amount}
+            unit={DEFAULT_UNITS[type]}
+            step={AMOUNT_STEPS[type]}
+            onChange={setAmount}
+          />
           <SocialToggle value={socialContext} onChange={setSocialContext} />
           <TimePicker value={timestamp} onChange={setTimestamp} />
           <textarea

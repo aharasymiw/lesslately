@@ -1,6 +1,6 @@
 import { useState, useCallback, useLayoutEffect } from 'react'
 import { TypeSelector } from '@/components/log/TypeSelector'
-import { DEFAULT_UNITS } from '@/lib/constants'
+import { DEFAULT_UNITS, AMOUNT_STEPS } from '@/lib/constants'
 import { AmountStepper } from '@/components/log/AmountStepper'
 import { SocialToggle } from '@/components/log/SocialToggle'
 import { TimePicker } from '@/components/log/TimePicker'
@@ -44,6 +44,7 @@ export default function LogPage() {
   // Fall back defensively: state.type is always an enum value (seeded from the
   // schema-validated default), so this only guards a future widening.
   const unit = DEFAULT_UNITS[state.type] ?? DEFAULT_UNITS.flower
+  const step = AMOUNT_STEPS[state.type] ?? 1
 
   // Single updater so every field marks the form touched in one place; a missed
   // call site then fails visibly (no state change) instead of silently dropping
@@ -128,6 +129,7 @@ export default function LogPage() {
           <AmountStepper
             value={state.amount}
             unit={unit}
+            step={step}
             onChange={(amount) => update({ amount })}
           />
         </section>

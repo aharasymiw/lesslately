@@ -76,6 +76,16 @@ describe('JSON backup round-trip', () => {
     expect(decoded.settings.defaultEntryType).toBe('vape')
   })
 
+  it('round-trips a fractional tincture-in-mg amount through an encrypted backup', async () => {
+    const data: BackupData = {
+      entries: [entry({ type: 'tincture', amount: 1.5, unit: 'mg' })],
+      goals: [],
+      settings: { theme: 'system', autoLockMinutes: 5 },
+    }
+    const decoded = await decodeBackupJSON(await serializeEncryptedBackup(data, 'pw'), 'pw')
+    expect(decoded.entries[0]).toMatchObject({ type: 'tincture', amount: 1.5, unit: 'mg' })
+  })
+
   it('requires a password for an encrypted backup', async () => {
     const file = await serializeEncryptedBackup(sample(), 'pw')
     await expect(decodeBackupJSON(file)).rejects.toBeInstanceOf(BackupPasswordRequiredError)

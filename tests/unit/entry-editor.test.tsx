@@ -64,4 +64,11 @@ describe('EntryEditor (TypeSelector consumer)', () => {
     expect(onSave.mock.calls[0][0]).toBe(entry.id)
     expect(onSave.mock.calls[0][1]).toMatchObject({ type: 'flower', unit: 'hits' })
   })
+
+  it('doses tincture in mg', () => {
+    const tinctureEntry: LogEntry = { ...entry, type: 'tincture', unit: 'mg' }
+    render(<EntryEditor entry={tinctureEntry} onSave={vi.fn()} onClose={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Tincture' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('mg')).toBeInTheDocument()
+  })
 })
