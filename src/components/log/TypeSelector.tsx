@@ -16,7 +16,9 @@ const TYPES: {
 ]
 
 interface TypeSelectorProps {
-  value: ConsumptionType
+  // Optional so the Settings control can render an honest "nothing selected"
+  // state (no tile pressed) when the user has no saved default yet.
+  value?: ConsumptionType
   onChange: (type: ConsumptionType) => void
 }
 
@@ -27,6 +29,7 @@ export function TypeSelector({ value, onChange }: TypeSelectorProps) {
         <button
           key={type}
           type="button"
+          aria-pressed={value === type}
           onClick={() => onChange(type)}
           className={cn(
             'flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-xs font-medium transition-all min-h-[72px] active:scale-95',

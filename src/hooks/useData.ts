@@ -30,6 +30,11 @@ export interface DataContextValue {
   importBackup: (resolved: ResolvedImport) => Promise<void>
   // State
   isLoading: boolean
+  // True once settings have resolved (decrypted) at least once for the current
+  // unlock. Unlike `isLoading` (false both before and after a load), this is a
+  // positive "settings are ready" signal: consumers can gate preference-driven
+  // UI on it to avoid acting on DEFAULT_SETTINGS during the pre-load window.
+  settingsReady: boolean
 }
 
 export const DataContext = createContext<DataContextValue | null>(null)
