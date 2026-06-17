@@ -23,8 +23,8 @@ import {
 } from '@/lib/db'
 import { requestPersistentStorage } from '@/lib/storage'
 
-const SESSION_SENTINEL = 'trellis-session-ok'
-const STAY_LOGGED_IN_STORAGE_KEY = 'trellis-stay-logged-in'
+const SESSION_SENTINEL = 'lesslately-session-ok'
+const STAY_LOGGED_IN_STORAGE_KEY = 'lesslately-stay-logged-in'
 const DEFAULT_AUTH_PREFS: AuthPrefs = {
   stayLoggedIn: false,
 }
@@ -32,7 +32,7 @@ const DEFAULT_AUTH_PREFS: AuthPrefs = {
 // Same-origin channel that propagates an explicit lock to every open tab.
 // Auto-lock stays per-tab: an idle tab locking itself must not yank the vault
 // out from under a tab the user is actively working in.
-const LOCK_CHANNEL_NAME = 'trellis-lock'
+const LOCK_CHANNEL_NAME = 'lesslately-lock'
 
 // User-input events that count as "activity" for the idle timer. Passive and
 // debounced so the listeners cost nothing on busy pages.

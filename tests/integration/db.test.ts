@@ -45,7 +45,7 @@ beforeEach(async () => {
 // saveVaultMeta's schema validation — used to simulate a stored legacy/foreign shape.
 async function putRawMeta(meta: unknown) {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('tracker-vault', 1)
+    const request = indexedDB.open('lesslately-vault', 1)
     request.onupgradeneeded = () => {
       request.result.createObjectStore('meta')
     }
