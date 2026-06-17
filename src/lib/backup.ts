@@ -12,7 +12,7 @@ import { generateSalt, deriveBackupKey, encrypt, decrypt } from '@/lib/crypto'
 // under that vault's own key.
 
 export const BACKUP_VERSION = 1
-const BACKUP_APP = 'trellis'
+const BACKUP_APP = 'lesslately'
 const PBKDF2_ITERATIONS = 600_000
 
 export interface BackupData {

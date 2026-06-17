@@ -135,8 +135,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icons/*.png'],
       manifest: {
-        name: 'Trellis',
-        short_name: 'Trellis',
+        name: 'Less Lately',
+        short_name: 'Less Lately',
         description: 'Mindful cannabis consumption tracker',
         theme_color: '#2D5F3C',
         background_color: '#FAF8F5',

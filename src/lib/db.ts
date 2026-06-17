@@ -2,7 +2,7 @@ import { openDB, type IDBPDatabase } from 'idb'
 import type { AuthPrefs, EncryptedRecord, VaultMeta } from '@/types'
 import { AuthPrefsSchema, VaultMetaSchema } from '@/lib/schemas'
 
-const DB_NAME = 'tracker-vault'
+const DB_NAME = 'lesslately-vault'
 const DB_VERSION = 1
 const VAULT_META_KEY = 'vault'
 const SESSION_KEY = 'session-key'
