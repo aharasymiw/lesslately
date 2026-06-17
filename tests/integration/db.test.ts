@@ -41,6 +41,26 @@ beforeEach(async () => {
   resetDbForTesting()
 })
 
+// Write a raw object straight into the meta store under the vault key, bypassing
+// saveVaultMeta's schema validation — used to simulate a stored legacy/foreign shape.
+async function putRawMeta(meta: unknown) {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('tracker-vault', 1)
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore('meta')
+    }
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve(request.result)
+  })
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction('meta', 'readwrite')
+    tx.objectStore('meta').put(meta, 'vault')
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+  db.close()
+}
+
 describe('db - vault meta', () => {
   it('saves and retrieves vault meta', async () => {
     const { saveVaultMeta, getVaultMeta } = await import('@/lib/db')
@@ -66,10 +86,12 @@ describe('db - vault meta', () => {
     expect(retrieved).toEqual(meta)
   })
 
-  it('migrates legacy vault meta on read and persists the upgraded shape', async () => {
+  it('returns undefined for a legacy pre-v3 meta shape (routes to onboarding)', async () => {
     const { getVaultMeta } = await import('@/lib/db')
 
-    const legacyMeta = {
+    // Old v1 top-level shape (pre key-slots). With the migration shims removed,
+    // a strict v3 parse rejects it and the app falls back to onboarding.
+    await putRawMeta({
       version: 1,
       passwordSalt: 'aabbccdd'.repeat(8),
       encryptedMasterKey: 'base64data==',
@@ -77,51 +99,18 @@ describe('db - vault meta', () => {
       verifyIV: 'verifyiv==',
       verifyCiphertext: 'verifyciphertext==',
       createdAt: new Date().toISOString(),
-    }
-
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('tracker-vault', 1)
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore('meta')
-      }
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve(request.result)
     })
 
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('meta', 'readwrite')
-      tx.objectStore('meta').put(legacyMeta, 'vault')
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
-    db.close()
-
-    const migrated = await getVaultMeta()
-    expect(migrated).toEqual({
-      version: 3,
-      keySlots: [
-        {
-          id: 'legacy-password-slot',
-          type: 'password',
-          passwordSalt: legacyMeta.passwordSalt,
-          encryptedMasterKey: legacyMeta.encryptedMasterKey,
-          masterKeyIV: legacyMeta.masterKeyIV,
-        },
-      ],
-      verifyIV: legacyMeta.verifyIV,
-      verifyCiphertext: legacyMeta.verifyCiphertext,
-      createdAt: legacyMeta.createdAt,
-    })
-
-    const reread = await getVaultMeta()
-    expect(reread).toEqual(migrated)
+    expect(await getVaultMeta()).toBeUndefined()
   })
 
-  it('drops legacy PRF passkey slots when migrating version 2 metadata', async () => {
+  it('returns undefined for a v3 meta carrying a non-password key slot', async () => {
     const { getVaultMeta } = await import('@/lib/db')
 
-    const version2Meta = {
-      version: 2,
+    // A v3 meta with a stray passkey slot no longer round-trips through a
+    // normalization step; the strict parse rejects the whole meta.
+    await putRawMeta({
+      version: 3,
       keySlots: [
         {
           id: 'password-slot',
@@ -136,107 +125,15 @@ describe('db - vault meta', () => {
           credentialId: 'credential-id',
           encryptedMasterKey: 'blob-data==',
           masterKeyIV: 'blob-iv==',
-          prfInput: 'legacy-prf-input',
           label: 'Fingerprint / Face ID',
         },
       ],
       verifyIV: 'verifyiv==',
       verifyCiphertext: 'verifyciphertext==',
       createdAt: new Date().toISOString(),
-    }
-
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('tracker-vault', 1)
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore('meta')
-      }
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve(request.result)
     })
 
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('meta', 'readwrite')
-      tx.objectStore('meta').put(version2Meta, 'vault')
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
-    db.close()
-
-    const migrated = await getVaultMeta()
-    expect(migrated).toEqual({
-      version: 3,
-      keySlots: [
-        {
-          id: 'password-slot',
-          type: 'password',
-          passwordSalt: version2Meta.keySlots[0].passwordSalt,
-          encryptedMasterKey: version2Meta.keySlots[0].encryptedMasterKey,
-          masterKeyIV: version2Meta.keySlots[0].masterKeyIV,
-        },
-      ],
-      verifyIV: version2Meta.verifyIV,
-      verifyCiphertext: version2Meta.verifyCiphertext,
-      createdAt: version2Meta.createdAt,
-    })
-  })
-
-  it('drops a legacy passkey slot from version 3 metadata on read', async () => {
-    const { getVaultMeta } = await import('@/lib/db')
-
-    const version3Meta = {
-      version: 3,
-      keySlots: [
-        {
-          id: 'password-slot',
-          type: 'password',
-          passwordSalt: 'aabbccdd'.repeat(8),
-          encryptedMasterKey: 'base64data==',
-          masterKeyIV: 'iv==',
-        },
-        {
-          id: 'passkey-slot',
-          type: 'passkey',
-          storage: 'largeBlob',
-          credentialId: 'credential-id',
-          encryptedMasterKey: 'blob-data==',
-          masterKeyIV: 'blob-iv==',
-          label: 'Fingerprint / Face ID',
-        },
-      ],
-      verifyIV: 'verifyiv==',
-      verifyCiphertext: 'verifyciphertext==',
-      createdAt: new Date().toISOString(),
-    }
-
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('tracker-vault', 1)
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore('meta')
-      }
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve(request.result)
-    })
-
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('meta', 'readwrite')
-      tx.objectStore('meta').put(version3Meta, 'vault')
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
-    db.close()
-
-    const cleaned = await getVaultMeta()
-    expect(cleaned).toEqual({
-      version: 3,
-      keySlots: [version3Meta.keySlots[0]],
-      verifyIV: version3Meta.verifyIV,
-      verifyCiphertext: version3Meta.verifyCiphertext,
-      createdAt: version3Meta.createdAt,
-    })
-
-    // The cleaned shape is persisted, so a re-read returns the same thing.
-    const reread = await getVaultMeta()
-    expect(reread).toEqual(cleaned)
+    expect(await getVaultMeta()).toBeUndefined()
   })
 
   it('returns undefined when no vault exists', async () => {

@@ -14,113 +14,6 @@ const DEFAULT_AUTH_PREFS: AuthPrefs = {
 
 let dbPromise: Promise<IDBPDatabase> | null = null
 
-interface LegacyVaultMeta {
-  version?: number
-  passwordSalt?: string
-  encryptedMasterKey?: string
-  masterKeyIV?: string
-  verifyIV?: string
-  verifyCiphertext?: string
-  createdAt?: string
-}
-
-interface LegacyPasswordKeySlotV2 {
-  id?: string
-  type: 'password'
-  passwordSalt?: string
-  encryptedMasterKey?: string
-  masterKeyIV?: string
-}
-
-interface LegacyPasskeyKeySlotV2 {
-  id?: string
-  type: 'passkey'
-  credentialId?: string
-  encryptedMasterKey?: string
-  masterKeyIV?: string
-  label?: string
-  transports?: string[]
-  prfInput?: string
-  rpId?: string
-}
-
-interface LegacyVaultMetaV2 {
-  version: 2
-  keySlots?: Array<LegacyPasswordKeySlotV2 | LegacyPasskeyKeySlotV2>
-  verifyIV?: string
-  verifyCiphertext?: string
-  createdAt?: string
-}
-
-function isLegacyVaultMeta(value: unknown): value is LegacyVaultMeta {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const meta = value as LegacyVaultMeta
-  return (
-    typeof meta.passwordSalt === 'string' &&
-    typeof meta.encryptedMasterKey === 'string' &&
-    typeof meta.masterKeyIV === 'string' &&
-    typeof meta.createdAt === 'string'
-  )
-}
-
-function isLegacyVaultMetaV2(value: unknown): value is LegacyVaultMetaV2 {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const meta = value as LegacyVaultMetaV2
-  return meta.version === 2 && Array.isArray(meta.keySlots) && typeof meta.createdAt === 'string'
-}
-
-interface RawVersion3Meta {
-  version: 3
-  keySlots: Array<{ type?: string } & Record<string, unknown>>
-  [key: string]: unknown
-}
-
-function isVersion3Meta(value: unknown): value is RawVersion3Meta {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const meta = value as { version?: unknown; keySlots?: unknown }
-  return meta.version === 3 && Array.isArray(meta.keySlots)
-}
-
-function migrateLegacyVaultMeta(meta: LegacyVaultMeta): VaultMeta {
-  const createdAt = meta.createdAt ?? new Date().toISOString()
-  return {
-    version: 3,
-    keySlots: [
-      {
-        id: 'legacy-password-slot',
-        type: 'password',
-        passwordSalt: meta.passwordSalt ?? '',
-        encryptedMasterKey: meta.encryptedMasterKey ?? '',
-        masterKeyIV: meta.masterKeyIV ?? '',
-      },
-    ],
-    verifyIV: meta.verifyIV,
-    verifyCiphertext: meta.verifyCiphertext,
-    createdAt,
-  }
-}
-
-function migrateLegacyVaultMetaV2(meta: LegacyVaultMetaV2): VaultMeta {
-  const createdAt = meta.createdAt ?? new Date().toISOString()
-  const passwordSlots = (meta.keySlots ?? [])
-    .filter((slot): slot is LegacyPasswordKeySlotV2 => slot.type === 'password')
-    .map((slot, index) => ({
-      id: slot.id ?? (index === 0 ? 'password-slot' : `password-slot-${index + 1}`),
-      type: 'password' as const,
-      passwordSalt: slot.passwordSalt ?? '',
-      encryptedMasterKey: slot.encryptedMasterKey ?? '',
-      masterKeyIV: slot.masterKeyIV ?? '',
-    }))
-
-  return {
-    version: 3,
-    keySlots: passwordSlots,
-    verifyIV: meta.verifyIV,
-    verifyCiphertext: meta.verifyCiphertext,
-    createdAt,
-  }
-}
-
 function getDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
@@ -146,36 +39,17 @@ function getDB() {
   return dbPromise
 }
 
+// Vault meta is stored as the current schema (version 3, password key slots
+// only) and read back with a single strict parse. Anything that does not
+// validate — a legacy pre-v3 shape, or a v3 meta carrying a non-password key
+// slot — returns undefined, which routes the app to onboarding (restore from
+// backup). The historical v1/v2 migration shims and the passkey-slot
+// normalization were removed once the sole vault was confirmed clean v3.
 export async function getVaultMeta(): Promise<VaultMeta | undefined> {
   const db = await getDB()
   const raw = await db.get('meta', VAULT_META_KEY)
-
-  if (isVersion3Meta(raw)) {
-    // A v3 vault saved by a build that supported biometric unlock may still
-    // carry passkey key slots. Drop any non-password slots so the vault opens
-    // with its password, and persist the cleaned shape.
-    const passwordSlots = raw.keySlots.filter((slot) => slot?.type === 'password')
-    const candidate =
-      passwordSlots.length === raw.keySlots.length ? raw : { ...raw, keySlots: passwordSlots }
-    const parsed = VaultMetaSchema.safeParse(candidate)
-    if (!parsed.success) return undefined
-    if (candidate !== raw) await saveVaultMeta(parsed.data)
-    return parsed.data
-  }
-
-  if (isLegacyVaultMeta(raw)) {
-    const migrated = migrateLegacyVaultMeta(raw)
-    await saveVaultMeta(migrated)
-    return migrated
-  }
-
-  if (isLegacyVaultMetaV2(raw)) {
-    const migrated = migrateLegacyVaultMetaV2(raw)
-    await saveVaultMeta(migrated)
-    return migrated
-  }
-
-  return undefined
+  const parsed = VaultMetaSchema.safeParse(raw)
+  return parsed.success ? parsed.data : undefined
 }
 
 export async function saveVaultMeta(meta: VaultMeta): Promise<void> {
