@@ -1,24 +1,28 @@
-// Cloudflare Pages middleware — keep the production app reachable only at its
-// custom domain.
+// Cloudflare Pages middleware — keep each site reachable only at its custom domain.
 //
-// Requests to the project's production pages.dev alias (trellis-2d9.pages.dev)
-// are 301-redirected to app.lesslately.com, preserving path and query. This:
-//   - takes the production pages.dev URL out of service as a live address,
-//   - removes the stale "trellis" URL from search indexes, and
-//   - closes the gap where zone-level AI-bot / WAF rules on lesslately.com do
-//     not cover *.pages.dev (which would otherwise be an unprotected bypass).
+// CI deploys BOTH Pages projects from the repo root (`wrangler pages deploy dist`
+// for the app, `wrangler pages deploy www --project-name=lesslately-www` for the
+// landing page), and `wrangler pages deploy` always bundles this functions/ dir
+// from the working directory — so this one file ships to both projects. Each
+// project only ever receives requests for its own hostnames, so a single
+// host -> custom-domain map redirects correctly for both:
+//   - trellis-2d9.pages.dev    -> app.lesslately.com   (app project)
+//   - lesslately-www.pages.dev -> www.lesslately.com   (landing project)
 //
-// Per-deploy preview URLs (<hash>.trellis-2d9.pages.dev) are intentionally left
-// reachable so a build can be spot-checked before it is the custom domain.
-// Requests to app.lesslately.com pass straight through to the static assets.
-const PRODUCTION_PAGES_DEV = 'trellis-2d9.pages.dev'
-const CANONICAL_HOST = 'app.lesslately.com'
+// Matching is exact, so per-deploy preview URLs (<hash>.<alias>.pages.dev) stay
+// reachable. Requests to the custom domains pass straight through to the static
+// assets, so their _headers (CSP/HSTS) still apply.
+const PAGES_DEV_TO_CUSTOM_DOMAIN = {
+  'trellis-2d9.pages.dev': 'app.lesslately.com',
+  'lesslately-www.pages.dev': 'www.lesslately.com',
+}
 
 export const onRequest = (context) => {
   const url = new URL(context.request.url)
-  if (url.hostname === PRODUCTION_PAGES_DEV) {
+  const customDomain = PAGES_DEV_TO_CUSTOM_DOMAIN[url.hostname]
+  if (customDomain) {
     url.protocol = 'https:'
-    url.hostname = CANONICAL_HOST
+    url.hostname = customDomain
     url.port = ''
     return Response.redirect(url.toString(), 301)
   }
