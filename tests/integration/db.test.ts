@@ -41,6 +41,36 @@ beforeEach(async () => {
   resetDbForTesting()
 })
 
+/**
+ * Fails loudly instead of stalling until the suite timeout. `clearAllData`'s
+ * historical bug was a promise that never settled, so "did it settle?" is the
+ * assertion — an ordinary await would just look like a slow test.
+ */
+function withTimeout<T>(promise: Promise<T>, ms = 2000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`did not settle within ${ms}ms — the delete was left blocked`)),
+        ms
+      )
+    }),
+  ])
+}
+
+/** A second connection that ignores `versionchange`, like a stale tab would. */
+function openStubbornConnection(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('lesslately-vault', 1)
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore('meta')
+    }
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve(request.result)
+  })
+}
+
 // Write a raw object straight into the meta store under the vault key, bypassing
 // saveVaultMeta's schema validation — used to simulate a stored legacy/foreign shape.
 async function putRawMeta(meta: unknown) {
@@ -236,5 +266,97 @@ describe('db - encrypted CRUD', () => {
     await deleteEncrypted('entries', 'to-delete')
     const result = await getEncrypted('entries', 'to-delete')
     expect(result).toBeUndefined()
+  })
+})
+
+describe('db - clearAllData', () => {
+  const record = (id: string): EncryptedRecord => ({
+    id,
+    iv: 'iv==',
+    ciphertext: 'data==',
+    updatedAt: new Date().toISOString(),
+  })
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('settles even though the app is holding the vault open', async () => {
+    const { saveAuthPrefs, clearAllData } = await import('@/lib/db')
+
+    // Any prior call leaves a live connection cached, which is exactly the
+    // state the Settings screen is in when "Clear all data" is pressed.
+    await saveAuthPrefs({ stayLoggedIn: true })
+
+    await expect(withTimeout(clearAllData())).resolves.toBeUndefined()
+  })
+
+  it('actually removes the stored data rather than queueing the delete', async () => {
+    const { saveVaultMeta, getVaultMeta, putEncrypted, getAllEncrypted, clearAllData } =
+      await import('@/lib/db')
+
+    await saveVaultMeta({
+      version: 3,
+      keySlots: [
+        {
+          id: 'password-slot',
+          type: 'password',
+          passwordSalt: 'aabbccdd'.repeat(8),
+          encryptedMasterKey: 'base64data==',
+          masterKeyIV: 'iv==',
+        },
+      ],
+      verifyIV: 'verifyiv==',
+      verifyCiphertext: 'verifyciphertext==',
+      createdAt: new Date().toISOString(),
+    } satisfies VaultMeta)
+    await putEncrypted('entries', record('e1'))
+    await putEncrypted('goals', record('g1'))
+
+    await withTimeout(clearAllData())
+
+    // Reads after the clear reopen a brand-new, empty database.
+    expect(await getVaultMeta()).toBeUndefined()
+    expect(await getAllEncrypted('entries')).toEqual([])
+    expect(await getAllEncrypted('goals')).toEqual([])
+  })
+
+  it('leaves the module usable — the next write opens a fresh connection', async () => {
+    const { putEncrypted, getEncrypted, clearAllData } = await import('@/lib/db')
+
+    await putEncrypted('entries', record('before'))
+    await withTimeout(clearAllData())
+
+    await putEncrypted('entries', record('after'))
+    expect(await getEncrypted('entries', 'after')).toBeDefined()
+    expect(await getEncrypted('entries', 'before')).toBeUndefined()
+  })
+
+  it('clears the settings kept in localStorage, which the dialog promises to delete', async () => {
+    const { clearAllData } = await import('@/lib/db')
+
+    localStorage.setItem('lesslately-theme', 'dark')
+    localStorage.setItem('lesslately-stay-logged-in', 'true')
+    localStorage.setItem('lesslately-last-backup-at', new Date().toISOString())
+    localStorage.setItem('lesslately-backup-nudge-snoozed-until', new Date().toISOString())
+    localStorage.setItem('unrelated-app-key', 'keep me')
+
+    await withTimeout(clearAllData())
+
+    expect(Object.keys(localStorage).filter((k) => k.startsWith('lesslately-'))).toEqual([])
+    // Only this app's namespace is cleared — nothing else on the origin.
+    expect(localStorage.getItem('unrelated-app-key')).toBe('keep me')
+  })
+
+  it('reports a blocking tab instead of waiting on it forever', async () => {
+    const { clearAllData } = await import('@/lib/db')
+
+    // A connection outside the module's control, so `blocking` cannot close it.
+    const stubborn = await openStubbornConnection()
+    try {
+      await expect(withTimeout(clearAllData())).rejects.toThrow(/Another tab/)
+    } finally {
+      stubborn.close()
+    }
   })
 })

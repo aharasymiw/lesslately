@@ -34,6 +34,7 @@ export function DataExport() {
 
   const [confirmClear, setConfirmClear] = useState(false)
   const [clearing, setClearing] = useState(false)
+  const [clearError, setClearError] = useState('')
 
   // JSON export dialog
   const [jsonOpen, setJsonOpen] = useState(false)
@@ -93,10 +94,12 @@ export function DataExport() {
 
   const handleClear = async () => {
     setClearing(true)
+    setClearError('')
     try {
       await clearAllData()
       window.location.reload()
-    } catch {
+    } catch (err) {
+      setClearError(err instanceof Error ? err.message : 'Could not clear your data.')
       setClearing(false)
     }
   }
@@ -237,7 +240,13 @@ export function DataExport() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
+      <Dialog
+        open={confirmClear}
+        onOpenChange={(open) => {
+          setConfirmClear(open)
+          if (!open) setClearError('')
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Clear all data?</DialogTitle>
@@ -246,6 +255,7 @@ export function DataExport() {
               undone. Make sure to export your data first if you want to keep it.
             </DialogDescription>
           </DialogHeader>
+          {clearError && <p className="text-sm text-destructive">{clearError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmClear(false)} disabled={clearing}>
               Cancel
