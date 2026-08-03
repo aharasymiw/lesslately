@@ -14,9 +14,28 @@ const DEFAULT_AUTH_PREFS: AuthPrefs = {
 
 let dbPromise: Promise<IDBPDatabase> | null = null
 
+// Drops the cached connection and closes it. IndexedDB will not delete a
+// database while any connection to it is open, so every delete path has to go
+// through here first.
+function closeDB(): Promise<void> {
+  const open = dbPromise
+  dbPromise = null
+  if (!open) return Promise.resolve()
+  // A connection that never opened has nothing to close.
+  return open.then(
+    (db) => db.close(),
+    () => undefined
+  )
+}
+
 function getDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
+      // Another tab is clearing (or upgrading) the vault and this connection is
+      // what's holding it up. Let go so their delete can finish.
+      blocking() {
+        void closeDB()
+      },
       upgrade(db) {
         // Unencrypted meta store
         if (!db.objectStoreNames.contains('meta')) {
@@ -73,13 +92,39 @@ export async function saveAuthPrefs(updates: Partial<AuthPrefs>): Promise<AuthPr
   return parsed
 }
 
+// Everything the app persists outside IndexedDB — theme, "stay logged in", and
+// the backup-reminder timestamps — is namespaced under this prefix. Clearing by
+// prefix means a new setting is covered the day it's added.
+const LOCAL_STORAGE_PREFIX = 'lesslately-'
+
+function clearLocalSettings(): void {
+  try {
+    const keys = Object.keys(localStorage).filter((key) => key.startsWith(LOCAL_STORAGE_PREFIX))
+    for (const key of keys) localStorage.removeItem(key)
+  } catch {
+    // Ignore localStorage errors (e.g. private browsing)
+  }
+}
+
+// Deletes the vault and every local setting. Dropping the cached promise is not
+// enough — the underlying connection stays open, and IndexedDB answers a delete
+// against an open connection with `blocked`, which fires no success and no
+// error. That left the caller awaiting a promise that never settled while the
+// delete sat queued until the next reload closed the connection for it.
 export async function clearAllData(): Promise<void> {
-  dbPromise = null
-  const req = indexedDB.deleteDatabase(DB_NAME)
+  await closeDB()
+
   await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(DB_NAME)
     req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
+    req.onerror = () => reject(req.error ?? new Error('Could not delete the vault.'))
+    // Another tab still holds the vault open and did not yield. Surface it
+    // rather than waiting forever.
+    req.onblocked = () =>
+      reject(new Error('Another tab has Less Lately open. Close it and try again.'))
   })
+
+  clearLocalSettings()
 }
 
 // Session key persistence — used by AuthContext for "stay logged in"
