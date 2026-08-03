@@ -303,7 +303,9 @@ export function ImportData() {
                 <DialogDescription>
                   Found {decoded.entries.length}{' '}
                   {decoded.entries.length === 1 ? 'entry' : 'entries'}
-                  {decoded.goals.length > 0 && ` and ${decoded.goals.length} goals`}.
+                  {decoded.goals.length > 0 &&
+                    ` and ${decoded.goals.length} ${decoded.goals.length === 1 ? 'goal' : 'goals'}`}
+                  .
                 </DialogDescription>
               </DialogHeader>
 

@@ -199,7 +199,7 @@ export function Onboarding() {
       {seed.goals.length > 0 && (
         <>
           {' '}
-          and <strong>{seed.goals.length}</strong> goals
+          and <strong>{seed.goals.length}</strong> {seed.goals.length === 1 ? 'goal' : 'goals'}
         </>
       )}{' '}
       into your new vault.

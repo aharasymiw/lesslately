@@ -132,6 +132,11 @@ async function createVaultFromPasswordStep() {
 
 const entryCount = () => Number(screen.getByTestId('entry-count').textContent)
 
+/** The seed notice interleaves <strong> counts with text, so read the whole
+ *  sentence back with collapsed whitespace. */
+const noticeText = () =>
+  (screen.getByText(/Restoring/).textContent ?? '').replace(/\s+/g, ' ').trim()
+
 beforeEach(async () => {
   installIndexedDbGlobals()
   localStorage.clear()
@@ -190,5 +195,47 @@ describe('onboarding restore-from-backup seed', () => {
     await createVaultFromPasswordStep()
 
     await waitFor(() => expect(entryCount()).toBe(2), { timeout: 5000 })
+  })
+})
+
+describe('restore notice counts', () => {
+  it('uses singular nouns for a one-entry, one-goal backup', async () => {
+    mount()
+    await screen.findByText('Restore from a backup')
+
+    chooseRestoreFile(
+      'backup.json',
+      serializePlainBackup(backup({ entries: [entry()], goals: [goal()] }))
+    )
+
+    await screen.findByText(/Restoring/)
+    expect(noticeText()).toBe('Restoring 1 entry and 1 goal into your new vault.')
+  })
+
+  it('uses plural nouns once there is more than one of each', async () => {
+    mount()
+    await screen.findByText('Restore from a backup')
+
+    chooseRestoreFile(
+      'backup.json',
+      serializePlainBackup(
+        backup({
+          goals: [goal(), goal({ id: 'e4ffcd88-1a2b-4c4d-9e6f-7a8b9c0d1e52', type: 'weekly' })],
+        })
+      )
+    )
+
+    await screen.findByText(/Restoring/)
+    expect(noticeText()).toBe('Restoring 2 entries and 2 goals into your new vault.')
+  })
+
+  it('omits the goal clause entirely when the backup has none', async () => {
+    mount()
+    await screen.findByText('Restore from a backup')
+
+    chooseRestoreFile('entries.csv', serializeEntriesCSV([entry()]))
+
+    await screen.findByText(/Restoring/)
+    expect(noticeText()).toBe('Restoring 1 entry into your new vault.')
   })
 })

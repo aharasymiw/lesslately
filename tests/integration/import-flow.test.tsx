@@ -367,4 +367,49 @@ describe('import flow (UI)', () => {
     await screen.findByText('Import complete')
     await waitFor(() => expect(screen.getByTestId('theme').textContent).toBe('dark'))
   })
+
+  describe('configure-stage summary counts', () => {
+    /** Counts are interleaved with text nodes, so read the sentence back with
+     *  collapsed whitespace. */
+    const summaryText = () =>
+      (screen.getByText(/^Found /).textContent ?? '').replace(/\s+/g, ' ').trim()
+
+    it('uses singular nouns for a one-entry, one-goal backup', async () => {
+      mount()
+      await createVault()
+
+      chooseFile('backup.json', serializePlainBackup(backup()))
+      await screen.findByRole('button', { name: 'Continue' })
+
+      expect(summaryText()).toBe('Found 1 entry and 1 goal.')
+    })
+
+    it('uses plural nouns once there is more than one of each', async () => {
+      mount()
+      await createVault()
+
+      chooseFile(
+        'backup.json',
+        serializePlainBackup(
+          backup({
+            entries: [entry(), entry({ id: ALT_ENTRY_ID })],
+            goals: [goal(), goal({ id: 'e4ffcd88-1a2b-4c4d-9e6f-7a8b9c0d1e52', type: 'weekly' })],
+          })
+        )
+      )
+      await screen.findByRole('button', { name: 'Continue' })
+
+      expect(summaryText()).toBe('Found 2 entries and 2 goals.')
+    })
+
+    it('omits the goal clause entirely when the backup has none', async () => {
+      mount()
+      await createVault()
+
+      chooseFile('backup.json', serializePlainBackup(backup({ goals: [] })))
+      await screen.findByRole('button', { name: 'Continue' })
+
+      expect(summaryText()).toBe('Found 1 entry.')
+    })
+  })
 })
