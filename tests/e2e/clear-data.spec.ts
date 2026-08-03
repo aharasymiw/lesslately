@@ -2,14 +2,34 @@ import { test, expect, type Page } from '@playwright/test'
 
 // "Clear all data" end to end, against browser IndexedDB and a real reload.
 //
-// The stuck-on-"Clearing…" hang itself is pinned down in the jsdom suites,
-// where a blocked delete is deterministic; under automation Chrome sometimes
-// tears the page's connection down on its own, so timing here is not a
-// dependable signal. What this test does check deterministically is the
-// outcome the user cares about: the vault and the locally-stored settings are
-// really gone afterwards, and the app comes back usable.
+// Waiting on the app's own connection to block the delete is not a dependable
+// signal under automation — Chrome sometimes tears it down unprompted, which
+// lets the delete through even on the broken implementation. So the hang is
+// provoked instead: the second test holds a connection the app cannot close,
+// which blocks the delete every time.
 
 const PASSWORD = 'password-123'
+
+/**
+ * Opens a connection the page keeps alive and never yields, standing in for a
+ * second tab with the vault open. IndexedDB cannot delete a database while it
+ * exists, so any delete attempted afterwards is deterministically blocked.
+ */
+function holdVaultOpen(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open('lesslately-vault')
+        // No `onversionchange` handler, so this connection ignores the request
+        // to close, exactly like a tab sitting in the background.
+        request.onsuccess = () => {
+          ;(window as unknown as { heldConnection?: IDBDatabase }).heldConnection = request.result
+          resolve()
+        }
+        request.onerror = () => reject(request.error)
+      })
+  )
+}
 
 async function createVaultWithAnEntry(page: Page) {
   await page.goto('/')
@@ -73,4 +93,24 @@ test('clearing all data wipes the vault and returns to onboarding', async ({ pag
   await page.getByRole('button', { name: 'Create vault' }).click()
   await page.getByRole('link', { name: 'Journal' }).click()
   await expect(page.getByText('Nothing logged yet')).toBeVisible()
+})
+
+test('a blocked delete reports itself instead of hanging on "Clearing…"', async ({ page }) => {
+  await createVaultWithAnEntry(page)
+  await page.getByRole('link', { name: 'Settings' }).click()
+  await expect(page.locator('h1')).toHaveText('Settings')
+
+  await holdVaultOpen(page)
+
+  await page.getByRole('button', { name: /Clear all data/ }).click()
+  await page.getByRole('button', { name: 'Clear everything' }).click()
+
+  // The regression: with no `onblocked` handler the promise never settled, so
+  // the button sat here indefinitely and the user was told nothing.
+  await expect(page.getByRole('button', { name: 'Clearing…' })).toHaveCount(0, { timeout: 10_000 })
+  await expect(page.getByText(/Another tab has Less Lately open/)).toBeVisible()
+
+  // A failed clear is safe and retryable: still signed in, nothing destroyed.
+  await expect(page.getByRole('button', { name: 'Clear everything' })).toBeEnabled()
+  await expect(page).toHaveURL(/\/settings$/)
 })
