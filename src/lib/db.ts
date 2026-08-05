@@ -118,10 +118,16 @@ export async function clearAllData(): Promise<void> {
     const req = indexedDB.deleteDatabase(DB_NAME)
     req.onsuccess = () => resolve()
     req.onerror = () => reject(req.error ?? new Error('Could not delete the vault.'))
-    // Another tab still holds the vault open and did not yield. Surface it
-    // rather than waiting forever.
+    // Another tab still holds the vault open and did not yield. IndexedDB has
+    // no way to call the delete off — it stays queued and runs the moment that
+    // connection goes away — so say what will actually happen rather than
+    // implying the clear did not take.
     req.onblocked = () =>
-      reject(new Error('Another tab has Less Lately open. Close it and try again.'))
+      reject(
+        new Error(
+          'Another tab has Less Lately open. Your data will be cleared as soon as that tab is closed.'
+        )
+      )
   })
 
   clearLocalSettings()

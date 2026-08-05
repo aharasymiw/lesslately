@@ -168,8 +168,14 @@ describe('clear all data (UI)', () => {
     try {
       await confirmClear()
 
-      await screen.findByText(/Another tab has Less Lately open/, undefined, { timeout: 3000 })
-      // Actionable, not a dead end: the button is live again and no reload ran.
+      // The delete stays queued and cannot be called off, so the dialog says
+      // the clear is coming rather than asking for a retry.
+      await screen.findByText(
+        /Another tab has Less Lately open\. Your data will be cleared as soon as that tab is closed\./,
+        undefined,
+        { timeout: 3000 }
+      )
+      // Not a dead end: the button is live again and no reload ran.
       expect(screen.getByRole('button', { name: 'Clear everything' })).not.toBeDisabled()
       expect(reload).not.toHaveBeenCalled()
     } finally {
