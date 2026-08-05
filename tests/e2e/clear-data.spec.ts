@@ -108,9 +108,47 @@ test('a blocked delete reports itself instead of hanging on "Clearing…"', asyn
   // The regression: with no `onblocked` handler the promise never settled, so
   // the button sat here indefinitely and the user was told nothing.
   await expect(page.getByRole('button', { name: 'Clearing…' })).toHaveCount(0, { timeout: 10_000 })
-  await expect(page.getByText(/Another tab has Less Lately open/)).toBeVisible()
+  await expect(
+    page.getByText(
+      /Another tab has Less Lately open\. Your data will be cleared as soon as that tab is closed\./
+    )
+  ).toBeVisible()
 
-  // A failed clear is safe and retryable: still signed in, nothing destroyed.
+  // The app itself is left in one piece — still unlocked, still on Settings.
+  // The vault is not: the delete is queued and lands when the blocker closes,
+  // which is what the message promises and what the next assertion proves.
   await expect(page.getByRole('button', { name: 'Clear everything' })).toBeEnabled()
   await expect(page).toHaveURL(/\/settings$/)
+
+  // Release the blocking connection; the queued delete then runs on its own.
+  await page.evaluate(() => {
+    ;(window as unknown as { heldConnection?: IDBDatabase }).heldConnection?.close()
+  })
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          () =>
+            new Promise<number>((resolve, reject) => {
+              const request = indexedDB.open('lesslately-vault')
+              request.onerror = () => reject(request.error)
+              request.onsuccess = () => {
+                const db = request.result
+                if (!db.objectStoreNames.contains('entries')) {
+                  db.close()
+                  return resolve(0)
+                }
+                const tx = db.transaction('entries', 'readonly')
+                const all = tx.objectStore('entries').getAll()
+                tx.oncomplete = () => {
+                  db.close()
+                  resolve(all.result.length)
+                }
+                tx.onerror = () => reject(tx.error)
+              }
+            })
+        ),
+      { timeout: 10_000 }
+    )
+    .toBe(0)
 })
