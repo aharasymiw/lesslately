@@ -33,3 +33,4 @@ playwright-report
 
 # Design sources (not shipped)
 design
+.vitest/
