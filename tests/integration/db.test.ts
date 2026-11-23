@@ -354,9 +354,29 @@ describe('db - clearAllData', () => {
     // A connection outside the module's control, so `blocking` cannot close it.
     const stubborn = await openStubbornConnection()
     try {
-      await expect(withTimeout(clearAllData())).rejects.toThrow(/Another tab/)
+      // The delete cannot be called off, so the message has to promise the
+      // clear rather than invite a retry that is not needed.
+      await expect(withTimeout(clearAllData())).rejects.toThrow(
+        /Another tab has Less Lately open\. Your data will be cleared as soon as that tab is closed\./
+      )
     } finally {
       stubborn.close()
     }
+  })
+
+  it('still deletes the vault once the blocking connection goes away', async () => {
+    const { clearAllData, putEncrypted, getAllEncrypted } = await import('@/lib/db')
+
+    await putEncrypted('entries', record('e1'))
+
+    const stubborn = await openStubbornConnection()
+    await expect(withTimeout(clearAllData())).rejects.toThrow(/will be cleared/)
+
+    // Closing the blocker lets the queued delete run — which is exactly what
+    // the message now tells the user to expect.
+    stubborn.close()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(await getAllEncrypted('entries')).toEqual([])
   })
 })
